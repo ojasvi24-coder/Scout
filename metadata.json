@@ -1,0 +1,6 @@
+{
+  "name": "Opportunity Hunter",
+  "description": "A system that continuously discovers high-value startup opportunities before they become obvious.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
