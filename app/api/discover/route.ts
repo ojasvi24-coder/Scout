@@ -12,14 +12,15 @@ export async function POST(req: NextRequest) {
     const { topic } = await req.json();
 
     const prompt = `You are an autonomous Opportunity Discovery AI. 
-You continuously analyze Research (arXiv), Patents, Startup launches, Job postings, and Funding.
+You continuously analyze real-world data including Research, Patents, Startup launches, Job postings, and Funding using Google Search.
 Your goal is to identify a highly valuable problem that is currently unsolved or underserved.
-Focus area: ${topic ? topic : "emerging technologies, unexpected market shifts, or unsexy but highly profitable industries"}.
+Focus area: ${topic ? topic : "emerging technologies, unexpected market shifts, unsexy but highly profitable industries, bizarre high-paying jobs, or obscure niche markets"}.
 
-Generate a novel, high-quality startup opportunity in the following JSON format:
+Search the web for the latest emerging trends, new regulations, recent scientific papers, and shifting job roles related to the focus area to find a real, tangible market gap.
+Based on your real-world findings, generate a novel, high-quality startup opportunity in the following JSON format:
 {
   "title": "Short, catchy descriptive title of the startup",
-  "problem": "Detailed, compelling explanation of the problem and why it is rapidly becoming valuable right now",
+  "problem": "Detailed, compelling explanation of the problem based on REAL data and why it is rapidly becoming valuable right now",
   "metrics": {
     "trendGrowth": number between 80-100,
     "demandGrowth": number between 80-100,
@@ -36,20 +37,21 @@ Generate a novel, high-quality startup opportunity in the following JSON format:
   "suggestedStartup": "One sentence description of the product or service to build",
   "mvp": ["Feature 1", "Feature 2", "Feature 3"],
   "potentialCustomers": ["Specific customer segment 1", "Specific customer segment 2", "Specific customer segment 3"],
-  "competitionLevel": "Low" or "Medium",
+  "competitionLevel": "Low",
   "competitors": [
     { "name": "Competitor 1", "description": "What they do", "moat": "Their advantage", "weaknesses": ["Weakness 1", "Weakness 2"] }
   ]
 }
 
-Ensure the opportunity is highly creative, genuinely useful, and sounds like a legitimate YC-backed startup idea. Use realistic-sounding evidence. Return ONLY valid JSON.`;
+Ensure the opportunity is highly creative, genuinely useful, and sounds like a legitimate YC-backed startup idea. Return ONLY valid JSON without markdown wrapping.`;
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          tools: [{ googleSearch: {} }]
         }
       });
 

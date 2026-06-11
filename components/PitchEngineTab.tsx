@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Opportunity } from '@/lib/data';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Download, Presentation } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Presentation, Loader2 } from 'lucide-react';
 import { cn } from '@/components/Sidebar';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const SLIDE_TEMPLATES = [
   { id: '1', title: 'The Problem', render: (o: Opportunity) => o.problem },
@@ -16,6 +18,8 @@ const SLIDE_TEMPLATES = [
 
 export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: Opportunity | null }) {
   const [slideIndex, setSlideIndex] = useState(0);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   if (!selectedOpportunity) {
     return (
@@ -37,15 +41,52 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
   const handleNext = () => setSlideIndex(v => Math.min(v + 1, SLIDE_TEMPLATES.length - 1));
   const handlePrev = () => setSlideIndex(v => Math.max(v - 1, 0));
 
+  const handleSaveAsPDF = async () => {
+    if (!pdfContainerRef.current) return;
+    setIsGeneratingPDF(true);
+    
+    try {
+      const pdf = new jsPDF('landscape', 'pt', [1920, 1080]);
+      const slides = pdfContainerRef.current.querySelectorAll('.pdf-slide-node');
+      
+      for (let i = 0; i < slides.length; i++) {
+        const slide = slides[i] as HTMLElement;
+        const canvas = await html2canvas(slide, { 
+          scale: 1.5,
+          useCORS: true,
+          logging: false 
+        });
+        const imgData = canvas.toDataURL('image/png');
+        
+        if (i > 0) {
+          pdf.addPage();
+        }
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, 1920, 1080);
+      }
+      
+      pdf.save(`${opt.title.replace(/\s+/g, '_')}_PitchDeck.pdf`);
+    } catch (error) {
+      console.error('Failed to generate PDF', error);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto pb-24 h-full flex flex-col">
-      <header className="mb-8 flex justify-between items-end">
+      <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-6">
         <div>
           <h2 className="text-4xl font-extrabold text-slate-800 mb-2">Your presentation is ready!</h2>
           <p className="text-lg text-slate-500">Read through the slides below. You can present this directly to your team or investors.</p>
         </div>
-        <button className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm">
-          <Download className="w-4 h-4" /> Save as PDF
+        <button 
+          onClick={handleSaveAsPDF}
+          disabled={isGeneratingPDF}
+          className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm disabled:opacity-50 shrink-0"
+        >
+          {isGeneratingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {isGeneratingPDF ? 'Generating...' : 'Save as PDF'}
         </button>
       </header>
 
@@ -104,6 +145,31 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
           <button onClick={handleNext} disabled={slideIndex === SLIDE_TEMPLATES.length - 1} className="w-14 h-14 flex items-center justify-center rounded-full bg-white text-indigo-900 hover:bg-indigo-50 shadow-lg transition-all disabled:opacity-30 disabled:pointer-events-none">
             <ChevronRight className="w-8 h-8" />
           </button>
+        </div>
+      </div>
+
+      {/* Hidden slides for PDF generation */}
+      <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none z-[-1]" aria-hidden="true" ref={pdfContainerRef}>
+        <div className="flex flex-col">
+          {SLIDE_TEMPLATES.map((s) => (
+            <div key={s.id} className="pdf-slide-node relative bg-gradient-to-br from-indigo-900 to-purple-900 w-[1920px] h-[1080px] overflow-hidden flex flex-col p-24 shrink-0">
+              <div className="absolute top-16 left-24 opacity-60 flex items-center gap-4">
+                <span className="w-8 h-8 rounded-full bg-pink-500"></span>
+                <span className="text-white font-bold text-3xl tracking-wide">{opt.title}</span>
+              </div>
+              <div className="absolute top-16 right-24 opacity-50">
+                <span className="text-white font-medium text-2xl border-4 border-white/20 rounded-full px-8 py-3">{s.title}</span>
+              </div>
+              <div className="flex-1 flex flex-col justify-center mt-24">
+                <h1 className="text-8xl font-extrabold text-white mb-16 leading-tight drop-shadow-md">
+                  {s.title}
+                </h1>
+                <div className="text-5xl leading-relaxed text-indigo-100 whitespace-pre-wrap font-medium">
+                  {s.render(opt)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
