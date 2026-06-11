@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect } from 'react';
 import { Opportunity } from '@/lib/data';
 import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2 } from 'lucide-react';

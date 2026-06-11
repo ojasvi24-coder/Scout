@@ -64,8 +64,8 @@ export function DashboardTab({ opportunities, signals, onSelectOpportunity }: { 
           <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
             <TrendingUp className="text-purple-500 w-6 h-6" /> Data Stream Anomalies (30-Day)
           </h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 w-full min-h-[256px]">
+            <ResponsiveContainer width="100%" height={256} minWidth={0} minHeight={0}>
               <AreaChart data={MACRO_TRENDS}>
                 <defs>
                   <linearGradient id="colorAi" x1="0" y1="0" x2="0" y2="1">
@@ -88,7 +88,7 @@ export function DashboardTab({ opportunities, signals, onSelectOpportunity }: { 
         </div>
 
         <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-8 shadow-md flex flex-col justify-between text-white relative overflow-hidden group">
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay group-hover:opacity-20 transition-opacity" />
+          <div className="absolute inset-0 opacity-10 mix-blend-overlay group-hover:opacity-20 transition-opacity" style={{ backgroundImage: "url('https://www.transparenttextures.com/patterns/cubes.png')" }} />
           <div className="relative z-10">
             <h3 className="text-lg font-semibold text-indigo-100 mb-2">Active Markers</h3>
             <p className="text-6xl font-bold mb-4">{opportunities.length}<span className="text-2xl text-indigo-200 ml-2">total</span></p>
