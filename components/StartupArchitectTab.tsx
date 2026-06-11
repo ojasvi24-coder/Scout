@@ -9,7 +9,7 @@ export function StartupArchitectTab({ selectedOpportunity, onGoToPitch }: { sele
         <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 shadow-inner shadow-indigo-100">
           <Rocket className="w-12 h-12 text-indigo-400" strokeWidth={1.5} />
         </div>
-        <h3 className="text-3xl font-extrabold text-slate-800 mb-4">Let's Build Something!</h3>
+        <h3 className="text-3xl font-extrabold text-slate-800 mb-4">Let&apos;s Build Something!</h3>
         <p className="text-lg text-slate-500 max-w-md mx-auto">
           Choose a great idea from the <span className="font-bold text-indigo-500">Great Ideas</span> feed to start building your startup step-by-step.
         </p>
@@ -61,7 +61,7 @@ export function StartupArchitectTab({ selectedOpportunity, onGoToPitch }: { sele
           <CheckCircle2 className="w-8 h-8 text-emerald-500 bg-emerald-50 p-1.5 rounded-lg" /> What features to build first (MVP)
         </h3>
         <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-sm">
-           <p className="text-slate-500 text-lg mb-6">Don't overbuild. Start with just these core features to test the market:</p>
+           <p className="text-slate-500 text-lg mb-6">Don&apos;t overbuild. Start with just these core features to test the market:</p>
            <div className="space-y-4">
              {opt.mvp.map((item, i) => (
                <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50">

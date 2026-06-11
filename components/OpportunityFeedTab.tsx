@@ -25,7 +25,7 @@ export function OpportunityFeedTab({
       <header className="mb-10 text-center relative">
         <h2 className="text-4xl font-extrabold text-slate-800 mb-4">Great Ideas to Build</h2>
         <p className="text-lg text-slate-500 max-w-2xl mx-auto mb-8">
-          We've found these amazing opportunities where lots of people have a problem, but nobody has built a good solution yet. Pick one to get started!
+          We&apos;ve found these amazing opportunities where lots of people have a problem, but nobody has built a good solution yet. Pick one to get started!
         </p>
 
         <button 

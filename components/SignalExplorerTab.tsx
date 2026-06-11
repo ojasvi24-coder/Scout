@@ -99,7 +99,7 @@ export function SignalExplorerTab({ signals }: { signals: Signal[] }) {
                       <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-400 font-medium">
                          <span>Found {s.timestamp}</span>
                          <span>•</span>
-                         <span className="text-indigo-500">Confidence: {Math.floor(Math.random() * 20) + 80}%</span>
+                         <span className="text-indigo-500">Confidence: {80 + (s.id.charCodeAt(0) % 20)}%</span>
                       </div>
                    </div>
                 </div>

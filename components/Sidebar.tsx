@@ -52,7 +52,7 @@ export function Sidebar({ currentTab, setCurrentTab }: { currentTab: Tab; setCur
              <Radar className="w-6 h-6 text-emerald-600" />
            </div>
            <p className="text-sm font-bold text-slate-800 mb-1">Scanning 24/7</p>
-           <p className="text-xs text-slate-500">We analyze trends so you don't have to.</p>
+           <p className="text-xs text-slate-500">We analyze trends so you don&apos;t have to.</p>
         </div>
       </div>
     </div>
