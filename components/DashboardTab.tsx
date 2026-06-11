@@ -90,9 +90,9 @@ export function DashboardTab({ opportunities, signals, onSelectOpportunity }: { 
         <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-8 shadow-md flex flex-col justify-between text-white relative overflow-hidden group">
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay group-hover:opacity-20 transition-opacity" />
           <div className="relative z-10">
-            <h3 className="text-lg font-semibold text-indigo-100 mb-2">Unserved Opportunities</h3>
+            <h3 className="text-lg font-semibold text-indigo-100 mb-2">Active Markers</h3>
             <p className="text-6xl font-bold mb-4">{opportunities.length}<span className="text-2xl text-indigo-200 ml-2">total</span></p>
-            <p className="text-indigo-100 font-medium">Active market voids extracted from {signals.length} raw signals.</p>
+            <p className="text-indigo-100 font-medium">Active markers extracted from {signals.length} raw signals.</p>
           </div>
           <div className="bg-white/10 rounded-2xl p-4 mt-6 backdrop-blur-sm relative z-10">
              <div className="flex items-center gap-3">
