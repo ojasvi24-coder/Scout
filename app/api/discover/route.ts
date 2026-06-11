@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const prompt = `You are an autonomous Opportunity Discovery AI. 
 You continuously analyze real-world data including Research, Patents, Startup launches, Job postings, and Funding using Google Search.
 Your goal is to identify a highly valuable problem that is currently unsolved or underserved.
-Focus area: ${topic ? topic : "emerging technologies, unexpected market shifts, unsexy but highly profitable industries, bizarre high-paying jobs, or obscure niche markets"}.
+Focus area: ${topic ? topic : "Specialized Manufacturing (e.g. low-volume high-mix), Spatial Computing Regulatory Compliance (e.g. AR/VR biometric data anonymization), Climate Tech & Smart Infrastructure (e.g. targeted server rack micro-cooling, local farm satellite water-scarcity tracking), or Niche B2B SaaS (e.g. passkey migration, AI license scanners)"}.
 
 Search the web for the latest emerging trends, new regulations, recent scientific papers, and shifting job roles related to the focus area to find a real, tangible market gap.
 Based on your real-world findings, generate a novel, high-quality startup opportunity in the following JSON format:
@@ -62,48 +62,22 @@ Ensure the opportunity is highly creative, genuinely useful, and sounds like a l
       return NextResponse.json({ opportunity });
     } catch (apiError: any) {
       console.warn("API Error, falling back to mock:", apiError);
+      
       // Fallback for demo when quota is exceeded
-      const fallbackOpportunity = {
-        title: "AI Quality Control for Specialized Manufacturing",
-        problem: "Specialized manufacturing (e.g., medical devices, aerospace parts) requires intense precision, but human QA is slow and prone to fatigue. Current computer vision systems are too rigid for low-volume, high-mix production lines.",
-        metrics: {
-          trendGrowth: 92,
-          demandGrowth: 89,
-          marketScore: 85,
-          competitionScore: 12
-        },
-        marketDetails: {
-          tam: "$15B",
-          sam: "$4.5B",
-          som: "$400M",
-          description: "Visual inspection and QA for high-margin manufacturing."
-        },
-        evidence: [
-          "Defect rates in high-mix manufacturing lead to $2B+ in scrap annually.",
-          "Surge in specialized hardware startup launches needing rapid iteration.",
-          "Lack of agile visual AI tools adaptable to daily line changes."
-        ],
-        suggestedStartup: "An adaptable AI vision system that learns new defect patterns from a single CAD file and 5 reference images.",
-        mvp: [
-          "Few-shot training module for defect detection.",
-          "Integration with standard factory arm cameras.",
-          "Operator feedback loop tablet app."
-        ],
-        potentialCustomers: [
-          "Medical device contract manufacturers",
-          "Aerospace component makers",
-          "Boutique automotive parts suppliers"
-        ],
-        competitionLevel: "Low",
-        competitors: [
-          {
-            name: "Traditional Machine Vision",
-            description: "Fixed rule-based camera systems.",
-            moat: "Incumbency",
-            weaknesses: ["Requires weeks of programming", "Cannot adapt to new parts quickly"]
-          }
-        ]
-      };
+      const { INITIAL_OPPORTUNITIES } = require('@/lib/data');
+      const fallbacks = INITIAL_OPPORTUNITIES.filter((opt: any) => 
+        opt.title.includes('Manufacturing') || 
+        opt.title.includes('Compliance') || 
+        opt.title.includes('Cooling') || 
+        opt.title.includes('Passkey') ||
+        opt.title.includes('Tracker') ||
+        opt.title.includes('Scanner')
+      );
+      
+      const fallbackOpportunity = fallbacks.length > 0 
+        ? fallbacks[Math.floor(Math.random() * fallbacks.length)] 
+        : INITIAL_OPPORTUNITIES[0];
+        
       return NextResponse.json({ opportunity: fallbackOpportunity });
     }
   } catch (error: any) {

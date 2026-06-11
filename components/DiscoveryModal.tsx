@@ -69,11 +69,18 @@ export function DiscoveryModal({
         body: JSON.stringify({ topic }),
       });
 
-      if (!res.ok) {
-        throw new Error('Discovery engine failed to respond.');
+      const contentType = res.headers.get('content-type');
+      if (!res.ok || !contentType || !contentType.includes('application/json')) {
+        throw new Error('Discovery service temporarily unavailable. Please try reloading.');
       }
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        throw new Error('Discovery service temporarily unavailable. Please try reloading.');
+      }
+
       if (data.error) {
         throw new Error(data.error);
       }

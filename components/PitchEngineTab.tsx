@@ -1,10 +1,8 @@
 import { useState, useRef } from 'react';
 import { Opportunity } from '@/lib/data';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Download, Presentation, Loader2 } from 'lucide-react';
 import { cn } from '@/components/Sidebar';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 
 const SLIDE_TEMPLATES = [
   { id: '1', title: 'The Problem', render: (o: Opportunity) => o.problem },
@@ -19,6 +17,7 @@ const SLIDE_TEMPLATES = [
 export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: Opportunity | null }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   if (!selectedOpportunity) {
@@ -44,8 +43,13 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
   const handleSaveAsPDF = async () => {
     if (!pdfContainerRef.current) return;
     setIsGeneratingPDF(true);
+    setPdfError('');
     
     try {
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default;
+      const { jsPDF } = await import('jspdf');
+
       const pdf = new jsPDF('landscape', 'pt', [1920, 1080]);
       const slides = pdfContainerRef.current.querySelectorAll('.pdf-slide-node');
       
@@ -56,7 +60,7 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
           useCORS: true,
           logging: false 
         });
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/png', 1.0);
         
         if (i > 0) {
           pdf.addPage();
@@ -66,8 +70,9 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
       }
       
       pdf.save(`${opt.title.replace(/\s+/g, '_')}_PitchDeck.pdf`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to generate PDF', error);
+      setPdfError(error.message || 'Failed to generate PDF. Please try again.');
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -80,14 +85,17 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
           <h2 className="text-4xl font-extrabold text-slate-800 mb-2">Your presentation is ready!</h2>
           <p className="text-lg text-slate-500">Read through the slides below. You can present this directly to your team or investors.</p>
         </div>
-        <button 
-          onClick={handleSaveAsPDF}
-          disabled={isGeneratingPDF}
-          className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm disabled:opacity-50 shrink-0"
-        >
-          {isGeneratingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          {isGeneratingPDF ? 'Generating...' : 'Save as PDF'}
-        </button>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <button 
+            onClick={handleSaveAsPDF}
+            disabled={isGeneratingPDF}
+            className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm disabled:opacity-50"
+          >
+            {isGeneratingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isGeneratingPDF ? 'Generating...' : 'Save as PDF'}
+          </button>
+          {pdfError && <div className="text-red-500 text-sm font-medium">{pdfError}</div>}
+        </div>
       </header>
 
       {/* Slide Navigation Dots */}
