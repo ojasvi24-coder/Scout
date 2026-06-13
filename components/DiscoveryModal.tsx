@@ -4,12 +4,15 @@ import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2 } fr
 import { motion, AnimatePresence } from 'motion/react';
 
 const SCAN_STEPS = [
-  { id: 'arxiv',   icon: Network,   label: 'Scanning arXiv preprint patterns...',        duration: 800  },
-  { id: 'patents', icon: Database,  label: 'Cross-referencing USPTO filings...',          duration: 900  },
-  { id: 'jobs',    icon: Search,    label: 'Analyzing Greenhouse & Lever tech roles...',  duration: 700  },
-  { id: 'funding', icon: Cpu,       label: 'Triangulating recent Series Seed anomalies...', duration: 800 },
-  { id: 'synth',   icon: Terminal,  label: 'Synthesizing novel startup opportunity...',   duration: 1200 },
+  { id: 'arxiv',   icon: Network,  label: 'Scanning arXiv preprint patterns...',          duration: 800  },
+  { id: 'patents', icon: Database, label: 'Cross-referencing USPTO filings...',            duration: 900  },
+  { id: 'jobs',    icon: Search,   label: 'Analyzing Greenhouse & Lever tech roles...',    duration: 700  },
+  { id: 'funding', icon: Cpu,      label: 'Triangulating recent Series Seed anomalies...', duration: 800  },
+  { id: 'synth',   icon: Terminal, label: 'Synthesizing novel startup opportunity...',     duration: 1200 },
 ];
+
+// Total animation duration so we never resolve before the UI finishes
+const TOTAL_ANIMATION_MS = SCAN_STEPS.reduce((acc, s) => acc + s.duration, 0) + 400;
 
 export function DiscoveryModal({
   isOpen,
@@ -37,29 +40,30 @@ export function DiscoveryModal({
     }
   }, [isOpen]);
 
-  // Animate scan steps while API call runs in background
+  // Drive the animated step progression independently of the API call
   useEffect(() => {
     if (!isScanning) return;
-    let timeoutId: ReturnType<typeof setTimeout>;
     const step = SCAN_STEPS[currentStepIndex];
-    if (step) {
-      setLogs(prev => [...prev, `> [SYS] ${step.label}`]);
-      timeoutId = setTimeout(() => {
-        setLogs(prev => [...prev, `  |_ OK. Acquired signals.`]);
-        setCurrentStepIndex(prev => prev + 1);
-      }, step.duration);
-    }
-    return () => clearTimeout(timeoutId);
+    if (!step) return;
+
+    setLogs(prev => [...prev, `> [SYS] ${step.label}`]);
+    const id = setTimeout(() => {
+      setLogs(prev => [...prev, `  |_ OK. Acquired signals.`]);
+      setCurrentStepIndex(prev => prev + 1);
+    }, step.duration);
+
+    return () => clearTimeout(id);
   }, [isScanning, currentStepIndex]);
 
   const handleStartScan = async () => {
+    setError('');
     setIsScanning(true);
     setCurrentStepIndex(0);
     setLogs(['> [SYS] Initializing Discovery Agent...']);
-    setError('');
+
+    const startTime = Date.now();
 
     try {
-      // Calls our own Next.js API route — no CORS issues
       const res = await fetch('/api/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,30 +71,34 @@ export function DiscoveryModal({
       });
 
       if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
+        const text = await res.text().catch(() => '');
+        throw new Error(`Server returned ${res.status}${text ? ': ' + text : ''}`);
       }
 
       const data = await res.json();
 
-      if (!data.opportunity) {
-        throw new Error('No opportunity returned from server.');
+      if (!data?.opportunity) {
+        throw new Error('Server response was missing opportunity data.');
       }
 
-      // Let the animation finish at least through step 3
-      const minWait = Math.max(0, 3400 - Date.now());
-      await new Promise(r => setTimeout(r, minWait));
+      // Wait for animation to complete before closing modal
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, TOTAL_ANIMATION_MS - elapsed);
+      await new Promise(r => setTimeout(r, remaining));
 
       setIsScanning(false);
 
       const newOpt: Opportunity = {
         ...data.opportunity,
         id: `opt-auto-${Date.now()}`,
-        opportunityScore: Math.floor(Math.random() * 15) + 85,
+        opportunityScore: data.opportunity.opportunityScore
+          ?? Math.floor(Math.random() * 15) + 85,
       };
+
       onComplete(newOpt);
 
     } catch (err: unknown) {
-      console.error('Discovery scan error:', err);
+      console.error('[DiscoveryModal] scan error:', err);
       const msg = err instanceof Error ? err.message : 'Scan failed. Please try again.';
       setError(msg);
       setIsScanning(false);
@@ -107,7 +115,7 @@ export function DiscoveryModal({
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
       >
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
           <div>
             <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -127,15 +135,17 @@ export function DiscoveryModal({
 
         <div className="p-8">
           {!isScanning ? (
-            /* ── Input form ── */
+            /* ── Input state ── */
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Focus Area (Optional)</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  Focus Area <span className="font-normal text-slate-400">(optional)</span>
+                </label>
                 <input
                   type="text"
                   value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !isScanning && handleStartScan()}
+                  onChange={e => setTopic(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !isScanning && handleStartScan()}
                   placeholder="e.g., Space tech, Elderly care, Logistics, Cybersecurity..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-lg placeholder:text-slate-400"
                 />
@@ -154,8 +164,9 @@ export function DiscoveryModal({
               </div>
 
               {error && (
-                <div className="p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium">
-                  ⚠ {error}
+                <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium flex items-start gap-2">
+                  <span className="shrink-0">⚠</span>
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -163,11 +174,12 @@ export function DiscoveryModal({
                 onClick={handleStartScan}
                 className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-6 rounded-2xl transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
               >
-                <Search className="w-5 h-5" /> Execute Autonomous Scan
+                <Search className="w-5 h-5" />
+                Execute Autonomous Scan
               </button>
             </div>
           ) : (
-            /* ── Scanning animation ── */
+            /* ── Scanning state ── */
             <div className="space-y-6">
               <div className="flex gap-4">
                 {/* Step tracker */}
@@ -175,17 +187,17 @@ export function DiscoveryModal({
                   {SCAN_STEPS.map((step, idx) => {
                     const Icon = step.icon;
                     const isActive = currentStepIndex === idx;
-                    const isPast = currentStepIndex > idx;
+                    const isPast   = currentStepIndex > idx;
                     return (
                       <div key={step.id} className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                           isActive ? 'bg-indigo-100 text-indigo-600 border border-indigo-200'
                           : isPast  ? 'bg-emerald-100 text-emerald-600 border border-emerald-200'
                           :           'bg-slate-50 text-slate-300 border border-slate-100'
                         }`}>
-                          {isPast   ? <CheckCircle2 className="w-4 h-4" />
-                          : isActive ? <Loader2 className="w-4 h-4 animate-spin" />
-                          :           <Icon className="w-4 h-4" />}
+                          {isPast    ? <CheckCircle2 className="w-4 h-4" />
+                           : isActive ? <Loader2 className="w-4 h-4 animate-spin" />
+                           :            <Icon className="w-4 h-4" />}
                         </div>
                         <span className={`text-xs font-bold ${
                           isActive ? 'text-indigo-700' : isPast ? 'text-slate-500' : 'text-slate-300'
@@ -197,7 +209,7 @@ export function DiscoveryModal({
                   })}
                 </div>
 
-                {/* Console log */}
+                {/* Console output */}
                 <div className="w-2/3 bg-slate-900 rounded-2xl p-4 font-mono text-xs overflow-hidden h-64 flex flex-col justify-end relative shadow-inner">
                   <div className="absolute top-0 inset-x-0 h-8 bg-gradient-to-b from-slate-900 to-transparent z-10" />
                   <div className="flex flex-col gap-1.5">
@@ -207,7 +219,7 @@ export function DiscoveryModal({
                           key={i}
                           initial={{ opacity: 0, x: -5 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className={log.includes('|_ OK') ? 'text-slate-400 pl-4' : 'text-emerald-400'}
+                          className={log.startsWith('  |_') ? 'text-slate-400 pl-4' : 'text-emerald-400'}
                         >
                           {log}
                         </motion.div>
@@ -228,4 +240,3 @@ export function DiscoveryModal({
     </div>
   );
 }
-
