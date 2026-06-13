@@ -1,6 +1,6 @@
 import { Opportunity } from '@/lib/data';
 import { Target, Users, LayoutGrid, CheckCircle2, Presentation, Rocket } from 'lucide-react';
-import { cn } from '@/components/Sidebar';
+import { cn } from '@/lib/utils';
 
 export function StartupArchitectTab({ selectedOpportunity, onGoToPitch }: { selectedOpportunity: Opportunity | null, onGoToPitch: () => void }) {
   if (!selectedOpportunity) {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Opportunity } from '@/lib/data';
 import { ArrowRight, Star, TrendingUp, Compass, Target, Hammer, Search } from 'lucide-react';
-import { cn } from '@/components/Sidebar';
+import { cn } from '@/lib/utils';
 import { DiscoveryModal } from '@/components/DiscoveryModal';
 
 export function OpportunityFeedTab({ 
@@ -131,3 +131,4 @@ export function OpportunityFeedTab({
     </div>
   );
 }
+

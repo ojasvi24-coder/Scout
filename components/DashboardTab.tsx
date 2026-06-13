@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, Area, AreaChart } from 'recharts';
 import { Opportunity, Signal } from '@/lib/data';
+
 import { Sparkles, TrendingUp, Users, Heart, Star, ChevronRight, Zap } from 'lucide-react';
 
 const TICKER_MESSAGES = [

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Search, Hash, FileText, Beaker, Briefcase, DollarSign, Filter, Activity } from 'lucide-react';
-import { cn } from '@/components/Sidebar';
+import { cn } from '@/lib/utils';
 import { Signal } from '@/lib/data';
 
 const VECTORS = ['Everything', 'News', 'Tech', 'Jobs', 'Funding', 'Grants'];
