@@ -1,21 +1,116 @@
+'use client';
 import { useState } from 'react';
 import { Opportunity } from '@/lib/data';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Download, Presentation } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Presentation, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SLIDE_TEMPLATES = [
   { id: '1', title: 'The Problem', render: (o: Opportunity) => o.problem },
   { id: '2', title: 'Our Solution', render: (o: Opportunity) => o.suggestedStartup },
-  { id: '3', title: 'The Market Size', render: (o: Opportunity) => `Total Potential: ${o.marketDetails.tam}\nTarget Goal: ${o.marketDetails.som}\n\n${o.marketDetails.description}` },
-  { id: '4', title: 'Competition', render: (o: Opportunity) => o.competitors.length > 0 ? o.competitors.map(c => `• ${c.name}: ${c.description}`).join('\n\n') : 'There is currently no direct competition in this exact space.' },
+  { id: '3', title: 'The Market Size', render: (o: Opportunity) => `Total Addressable Market: ${o.marketDetails.tam}\nServiceable Market: ${o.marketDetails.sam}\nTarget Goal: ${o.marketDetails.som}\n\n${o.marketDetails.description}` },
+  { id: '4', title: 'Competition', render: (o: Opportunity) => o.competitors.length > 0 ? o.competitors.map(c => `• ${c.name}: ${c.description}\n  Weaknesses: ${c.weaknesses.join(', ')}`).join('\n\n') : 'There is currently no direct competition in this exact space.' },
   { id: '5', title: 'What We Are Building First', render: (o: Opportunity) => o.mvp.map(m => `• ${m}`).join('\n\n') },
   { id: '6', title: 'How We Make Money', render: () => 'Software as a Service (SaaS)\n\nSimple monthly subscription based on usage. Easy to start, scales as they grow.' },
   { id: '7', title: 'Who We Are Selling To', render: (o: Opportunity) => `Targeting:\n\n${o.potentialCustomers.map(p => `• ${p}`).join('\n')}\n\nWe will reach them through direct outreach and partnerships.` },
 ];
 
+async function generatePDF(opt: Opportunity) {
+  // Dynamically import jsPDF to keep bundle lean
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  const W = 297; // A4 landscape width mm
+  const H = 210; // A4 landscape height mm
+  const margin = 20;
+  const contentW = W - margin * 2;
+
+  const slides = [
+    { title: 'The Problem', content: opt.problem },
+    { title: 'Our Solution', content: opt.suggestedStartup },
+    { title: 'The Market Size', content: `TAM: ${opt.marketDetails.tam}  |  SAM: ${opt.marketDetails.sam}  |  Target: ${opt.marketDetails.som}\n\n${opt.marketDetails.description}` },
+    { title: 'Evidence & Signals', content: opt.evidence.map(e => `• ${e}`).join('\n') },
+    { title: 'Competition', content: opt.competitors.length > 0 ? opt.competitors.map(c => `• ${c.name}: ${c.description}\n  Weaknesses: ${c.weaknesses.join(', ')}`).join('\n\n') : 'No direct competition exists in this exact space — first-mover advantage.' },
+    { title: 'MVP — What to Build First', content: opt.mvp.map((m, i) => `${i + 1}. ${m}`).join('\n') },
+    { title: 'Revenue Model', content: 'Software as a Service (SaaS)\n\nMonthly subscription based on usage.\nStarts low to acquire customers, scales as they grow.' },
+    { title: 'Who We Are Selling To', content: opt.potentialCustomers.map(p => `• ${p}`).join('\n') },
+  ];
+
+  slides.forEach((slide, idx) => {
+    if (idx > 0) doc.addPage();
+
+    // Dark gradient background (solid approximation)
+    doc.setFillColor(30, 27, 75); // indigo-900
+    doc.rect(0, 0, W, H, 'F');
+
+    // Accent bar top
+    doc.setFillColor(99, 102, 241); // indigo-500
+    doc.rect(0, 0, W, 2, 'F');
+
+    // Slide number chip
+    doc.setFillColor(255, 255, 255, 0.1);
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(W - margin - 20, 10, 20, 8, 2, 2, 'S');
+    doc.setTextColor(200, 200, 255);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${idx + 1} / ${slides.length}`, W - margin - 10, 15.5, { align: 'center' });
+
+    // Company name top-left
+    doc.setTextColor(160, 160, 210);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(opt.title.toUpperCase(), margin, 16);
+
+    // Slide title
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(32);
+    doc.setFont('helvetica', 'bold');
+    const titleLines = doc.splitTextToSize(slide.title, contentW);
+    doc.text(titleLines, margin, 55);
+
+    // Divider line
+    const titleHeight = titleLines.length * 12;
+    doc.setDrawColor(99, 102, 241);
+    doc.setLineWidth(0.8);
+    doc.line(margin, 58 + titleHeight - 12, margin + 40, 58 + titleHeight - 12);
+
+    // Slide content
+    doc.setTextColor(180, 180, 230);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'normal');
+    const contentLines = doc.splitTextToSize(slide.content, contentW);
+    doc.text(contentLines, margin, 68 + titleHeight - 12);
+
+    // Footer
+    doc.setFillColor(20, 18, 60);
+    doc.rect(0, H - 12, W, 12, 'F');
+    doc.setTextColor(100, 100, 160);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Confidential — Generated by Scout', margin, H - 4);
+    doc.text(new Date().toLocaleDateString(), W - margin, H - 4, { align: 'right' });
+  });
+
+  doc.save(`${opt.title.replace(/\s+/g, '_')}_pitch_deck.pdf`);
+}
+
 export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: Opportunity | null }) {
   const [slideIndex, setSlideIndex] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (!selectedOpportunity) return;
+    setIsExporting(true);
+    try {
+      await generatePDF(selectedOpportunity);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (!selectedOpportunity) {
     return (
@@ -42,14 +137,21 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
       <header className="mb-8 flex justify-between items-end">
         <div>
           <h2 className="text-4xl font-extrabold text-slate-800 mb-2">Your presentation is ready!</h2>
-          <p className="text-lg text-slate-500">Read through the slides below. You can present this directly to your team or investors.</p>
+          <p className="text-lg text-slate-500">Read through the slides below, then export to PDF.</p>
         </div>
-        <button className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm">
-          <Download className="w-4 h-4" /> Save as PDF
+        <button
+          onClick={handleExportPDF}
+          disabled={isExporting}
+          className="flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-6 py-3 rounded-full transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isExporting
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating PDF...</>
+            : <><Download className="w-4 h-4" /> Save as PDF</>
+          }
         </button>
       </header>
 
-      {/* Slide Navigation Dots */}
+      {/* Slide Navigation */}
       <div className="flex gap-2 mb-6 items-center flex-wrap justify-center">
         {SLIDE_TEMPLATES.map((s, i) => (
           <button
@@ -57,7 +159,9 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
             onClick={() => setSlideIndex(i)}
             className={cn(
               "px-4 py-2 font-bold rounded-full transition-all text-sm shadow-sm",
-              slideIndex === i ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105" : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-100"
+              slideIndex === i
+                ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-105"
+                : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-100"
             )}
           >
             {s.id}. {s.title}
@@ -68,11 +172,11 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
       {/* Slide Canvas */}
       <div className="relative flex-1 bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl shadow-2xl aspect-[16/9] overflow-hidden flex flex-col min-h-[500px]">
         <div className="absolute top-8 left-10 opacity-60 flex items-center gap-2">
-           <span className="w-3 h-3 rounded-full bg-pink-500"></span>
-           <span className="text-white font-bold text-lg tracking-wide">{opt.title}</span>
+          <span className="w-3 h-3 rounded-full bg-pink-500"></span>
+          <span className="text-white font-bold text-lg tracking-wide">{opt.title}</span>
         </div>
         <div className="absolute top-8 right-10 opacity-50">
-           <span className="text-white font-medium text-sm border border-white/20 rounded-full px-4 py-1.5">{currentSlideInfo.title}</span>
+          <span className="text-white font-medium text-sm border border-white/20 rounded-full px-4 py-1.5">{currentSlideInfo.title}</span>
         </div>
 
         <div className="p-10 md:p-16 flex-1 flex flex-col justify-center relative min-h-0">
@@ -83,7 +187,7 @@ export function PitchEngineTab({ selectedOpportunity }: { selectedOpportunity: O
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -30 }}
               transition={{ duration: 0.5, type: 'spring' }}
-              className="max-w-4xl h-full flex flex-col justify-center overflow-y-auto pr-4 custom-scrollbar"
+              className="max-w-4xl h-full flex flex-col justify-center overflow-y-auto pr-4"
             >
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-6 leading-tight drop-shadow-md shrink-0">
                 {currentSlideInfo.title}
