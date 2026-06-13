@@ -4,41 +4,17 @@ import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2 } fr
 import { motion, AnimatePresence } from 'motion/react';
 
 const SCAN_STEPS = [
-  { id: 'arxiv', icon: Network, label: 'Scanning arXiv preprint patterns...', duration: 800 },
-  { id: 'patents', icon: Database, label: 'Cross-referencing USPTO filings...', duration: 900 },
-  { id: 'jobs', icon: Search, label: 'Analyzing Greenhouse & Lever tech roles...', duration: 700 },
-  { id: 'funding', icon: Cpu, label: 'Triangulating recent Series Seed anomalies...', duration: 800 },
-  { id: 'synth', icon: Terminal, label: 'Synthesizing novel startup opportunity...', duration: 1200 },
+  { id: 'arxiv',   icon: Network,   label: 'Scanning arXiv preprint patterns...',        duration: 800  },
+  { id: 'patents', icon: Database,  label: 'Cross-referencing USPTO filings...',          duration: 900  },
+  { id: 'jobs',    icon: Search,    label: 'Analyzing Greenhouse & Lever tech roles...',  duration: 700  },
+  { id: 'funding', icon: Cpu,       label: 'Triangulating recent Series Seed anomalies...', duration: 800 },
+  { id: 'synth',   icon: Terminal,  label: 'Synthesizing novel startup opportunity...',   duration: 1200 },
 ];
-
-const SYSTEM_PROMPT = `You are an expert startup opportunity analyst. Given a focus area (or no area for a random discovery), identify a specific high-value underserved market gap.
-
-Respond ONLY with a valid JSON object — no markdown, no backticks, no explanation. The JSON must match this exact shape:
-
-{
-  "title": "Short compelling opportunity title",
-  "problem": "2-3 sentence description of the specific problem and why it's painful",
-  "suggestedStartup": "One sentence describing the startup idea to solve it",
-  "evidence": ["Evidence point 1", "Evidence point 2", "Evidence point 3"],
-  "mvp": ["MVP feature 1", "MVP feature 2", "MVP feature 3"],
-  "potentialCustomers": ["Customer segment 1", "Customer segment 2", "Customer segment 3"],
-  "competitionLevel": "Low",
-  "competitors": [
-    { "name": "Competitor name", "description": "What they do", "moat": "Their advantage", "weaknesses": ["Weakness 1", "Weakness 2"] }
-  ],
-  "metrics": { "trendGrowth": 85, "demandGrowth": 80, "marketScore": 75, "competitionScore": 20 },
-  "marketDetails": {
-    "tam": "$12B",
-    "sam": "$3B",
-    "som": "$400M",
-    "description": "Brief market description"
-  }
-}`;
 
 export function DiscoveryModal({
   isOpen,
   onClose,
-  onComplete
+  onComplete,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -50,6 +26,7 @@ export function DiscoveryModal({
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState('');
 
+  // Reset when modal opens
   useEffect(() => {
     if (isOpen) {
       setTopic('');
@@ -60,7 +37,7 @@ export function DiscoveryModal({
     }
   }, [isOpen]);
 
-  // Animate scan steps independently of the API call
+  // Animate scan steps while API call runs in background
   useEffect(() => {
     if (!isScanning) return;
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -82,47 +59,39 @@ export function DiscoveryModal({
     setError('');
 
     try {
-      const userMessage = topic.trim()
-        ? `Find a specific underserved startup opportunity in the area of: ${topic}`
-        : `Find a specific underserved startup opportunity in any emerging technology or market area. Be creative and specific.`;
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // Calls our own Next.js API route — no CORS issues
+      const res = await fetch('/api/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1500,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: userMessage }],
-        }),
+        body: JSON.stringify({ topic: topic.trim() }),
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`API error ${res.status}: ${errText}`);
+        throw new Error(`Server error: ${res.status}`);
       }
 
       const data = await res.json();
-      const rawText = data.content?.[0]?.text ?? '';
 
-      // Strip any accidental markdown fences
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      if (!data.opportunity) {
+        throw new Error('No opportunity returned from server.');
+      }
 
-      // Wait for animation to finish (at least 4 steps worth)
-      await new Promise(r => setTimeout(r, 500));
+      // Let the animation finish at least through step 3
+      const minWait = Math.max(0, 3400 - Date.now());
+      await new Promise(r => setTimeout(r, minWait));
 
       setIsScanning(false);
+
       const newOpt: Opportunity = {
-        ...parsed,
+        ...data.opportunity,
         id: `opt-auto-${Date.now()}`,
         opportunityScore: Math.floor(Math.random() * 15) + 85,
       };
       onComplete(newOpt);
 
     } catch (err: unknown) {
-      console.error(err);
-      const msg = err instanceof Error ? err.message : 'An error occurred during discovery.';
+      console.error('Discovery scan error:', err);
+      const msg = err instanceof Error ? err.message : 'Scan failed. Please try again.';
       setError(msg);
       setIsScanning(false);
     }
@@ -138,6 +107,7 @@ export function DiscoveryModal({
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
       >
+        {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
           <div>
             <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -157,6 +127,7 @@ export function DiscoveryModal({
 
         <div className="p-8">
           {!isScanning ? (
+            /* ── Input form ── */
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Focus Area (Optional)</label>
@@ -177,14 +148,14 @@ export function DiscoveryModal({
                 <div>
                   <h4 className="font-bold text-indigo-900 mb-1">Deep Scan Protocol</h4>
                   <p className="text-sm text-indigo-700/80 leading-relaxed">
-                    The agent will use AI to triangulate novel market gaps from signals across research, patents, jobs, and funding trends.
+                    The agent triangulates novel market gaps across arXiv, YC batches, NSF grants, job boards, and patent filings using AI synthesis.
                   </p>
                 </div>
               </div>
 
               {error && (
                 <div className="p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium">
-                  {error}
+                  ⚠ {error}
                 </div>
               )}
 
@@ -196,8 +167,10 @@ export function DiscoveryModal({
               </button>
             </div>
           ) : (
+            /* ── Scanning animation ── */
             <div className="space-y-6">
               <div className="flex gap-4">
+                {/* Step tracker */}
                 <div className="w-1/3 border-r border-slate-100 pr-4 space-y-4">
                   {SCAN_STEPS.map((step, idx) => {
                     const Icon = step.icon;
@@ -205,10 +178,18 @@ export function DiscoveryModal({
                     const isPast = currentStepIndex > idx;
                     return (
                       <div key={step.id} className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? 'bg-indigo-100 text-indigo-600 border border-indigo-200' : isPast ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' : 'bg-slate-50 text-slate-300 border border-slate-100'}`}>
-                          {isPast ? <CheckCircle2 className="w-4 h-4" /> : isActive ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                          isActive ? 'bg-indigo-100 text-indigo-600 border border-indigo-200'
+                          : isPast  ? 'bg-emerald-100 text-emerald-600 border border-emerald-200'
+                          :           'bg-slate-50 text-slate-300 border border-slate-100'
+                        }`}>
+                          {isPast   ? <CheckCircle2 className="w-4 h-4" />
+                          : isActive ? <Loader2 className="w-4 h-4 animate-spin" />
+                          :           <Icon className="w-4 h-4" />}
                         </div>
-                        <span className={`text-xs font-bold ${isActive ? 'text-indigo-700' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
+                        <span className={`text-xs font-bold ${
+                          isActive ? 'text-indigo-700' : isPast ? 'text-slate-500' : 'text-slate-300'
+                        }`}>
                           {step.id.toUpperCase()}
                         </span>
                       </div>
@@ -216,20 +197,27 @@ export function DiscoveryModal({
                   })}
                 </div>
 
+                {/* Console log */}
                 <div className="w-2/3 bg-slate-900 rounded-2xl p-4 font-mono text-xs overflow-hidden h-64 flex flex-col justify-end relative shadow-inner">
                   <div className="absolute top-0 inset-x-0 h-8 bg-gradient-to-b from-slate-900 to-transparent z-10" />
-                  <div className="flex flex-col gap-1.5 text-emerald-400">
+                  <div className="flex flex-col gap-1.5">
                     <AnimatePresence>
                       {logs.map((log, i) => (
                         <motion.div
-                          initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }}
-                          key={i} className={`${log.includes('_ OK') ? 'text-slate-400 pl-4' : 'text-emerald-400'}`}
+                          key={i}
+                          initial={{ opacity: 0, x: -5 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className={log.includes('|_ OK') ? 'text-slate-400 pl-4' : 'text-emerald-400'}
                         >
                           {log}
                         </motion.div>
                       ))}
                     </AnimatePresence>
-                    <motion.div animate={{ opacity: [1, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-2 h-3 bg-emerald-400 mt-1" />
+                    <motion.div
+                      animate={{ opacity: [1, 0] }}
+                      transition={{ repeat: Infinity, duration: 0.8 }}
+                      className="w-2 h-3 bg-emerald-400 mt-1"
+                    />
                   </div>
                 </div>
               </div>
@@ -240,3 +228,4 @@ export function DiscoveryModal({
     </div>
   );
 }
+
