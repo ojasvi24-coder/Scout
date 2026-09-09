@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Opportunity } from '@/lib/data';
+import { Opportunity, calculateOpportunityScore } from '@/lib/data';
 import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const SCAN_STEPS = [
-  { id: 'arxiv',   icon: Network,  label: 'Scanning arXiv preprint patterns...',          duration: 800  },
-  { id: 'patents', icon: Database, label: 'Cross-referencing USPTO filings...',            duration: 900  },
-  { id: 'jobs',    icon: Search,   label: 'Analyzing Greenhouse & Lever tech roles...',    duration: 700  },
-  { id: 'funding', icon: Cpu,      label: 'Triangulating recent Series Seed anomalies...', duration: 800  },
-  { id: 'synth',   icon: Terminal, label: 'Synthesizing novel startup opportunity...',     duration: 1200 },
+  { id: 'arxiv',   icon: Network,  label: 'Scanning arXiv preprint feeds...',                duration: 800  },
+  { id: 'filings', icon: Database, label: 'Cross-referencing SEC Form D & federal awards...', duration: 900  },
+  { id: 'jobs',    icon: Search,   label: 'Analyzing live hiring signals...',                 duration: 700  },
+  { id: 'funding', icon: Cpu,      label: 'Triangulating Hacker News & GitHub activity...',   duration: 800  },
+  { id: 'synth',   icon: Terminal, label: 'Asking Gemini to synthesize an opportunity...',    duration: 1200 },
 ];
 
 // Total animation duration so we never resolve before the UI finishes
@@ -44,7 +44,15 @@ export function DiscoveryModal({
   useEffect(() => {
     if (!isScanning) return;
     const step = SCAN_STEPS[currentStepIndex];
-    if (!step) return;
+    if (!step) {
+      // All scripted steps finished but the real API call may still be running
+      // (Gemini reasoning can take longer than the fixed animation) — let the
+      // user know we're still working instead of the log appearing to freeze.
+      const id = setTimeout(() => {
+        setLogs(prev => [...prev, `> [SYS] Still reasoning — Gemini is weighing the evidence...`]);
+      }, 2500);
+      return () => clearTimeout(id);
+    }
 
     setLogs(prev => [...prev, `> [SYS] ${step.label}`]);
     const id = setTimeout(() => {
@@ -91,8 +99,7 @@ export function DiscoveryModal({
       const newOpt: Opportunity = {
         ...data.opportunity,
         id: `opt-auto-${Date.now()}`,
-        opportunityScore: data.opportunity.opportunityScore
-          ?? Math.floor(Math.random() * 15) + 85,
+        opportunityScore: calculateOpportunityScore(data.opportunity.metrics),
       };
 
       onComplete(newOpt);
@@ -158,7 +165,7 @@ export function DiscoveryModal({
                 <div>
                   <h4 className="font-bold text-indigo-900 mb-1">Deep Scan Protocol</h4>
                   <p className="text-sm text-indigo-700/80 leading-relaxed">
-                    The agent triangulates novel market gaps across arXiv, YC batches, NSF grants, job boards, and patent filings using AI synthesis.
+                    Gemini reasons over live signals from arXiv, Hacker News, RemoteOK, SEC Form D filings, and federal grant awards to surface a concrete, underserved opportunity.
                   </p>
                 </div>
               </div>

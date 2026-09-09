@@ -1,24 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { DashboardTab } from '@/components/DashboardTab';
 import { OpportunityFeedTab } from '@/components/OpportunityFeedTab';
 import { SignalExplorerTab } from '@/components/SignalExplorerTab';
 import { StartupArchitectTab } from '@/components/StartupArchitectTab';
 import { PitchEngineTab } from '@/components/PitchEngineTab';
-import { Opportunity, INITIAL_OPPORTUNITIES, RECENT_SIGNALS, Signal } from '@/lib/data';
+import { Opportunity, INITIAL_OPPORTUNITIES, FALLBACK_SIGNALS, Signal, timeAgo } from '@/lib/data';
 import { Menu, X } from 'lucide-react';
 
 type Tab = 'DASHBOARD' | 'IDEAS FEED' | 'TRENDS' | 'STARTUP BUILDER' | 'PITCH DECK';
+
+// Re-fetch live signals every 10 minutes while the app stays open.
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
 
 export default function Home() {
   const [currentTab, setCurrentTab] = useState<Tab>('DASHBOARD');
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   const [opportunities, setOpportunities] = useState<Opportunity[]>(INITIAL_OPPORTUNITIES);
-  const [signals, setSignals] = useState<Signal[]>(RECENT_SIGNALS);
+  const [signals, setSignals] = useState<Signal[]>(FALLBACK_SIGNALS);
+  const [signalsLoading, setSignalsLoading] = useState(true);
+  const [signalsUpdatedAt, setSignalsUpdatedAt] = useState<Date | null>(null);
+
+  const loadSignals = useCallback(async (force = false) => {
+    setSignalsLoading(true);
+    try {
+      const res = await fetch(`/api/signals${force ? '?refresh=true' : ''}`);
+      const data = await res.json();
+      if (Array.isArray(data?.signals) && data.signals.length > 0) {
+        setSignals(data.signals);
+        setSignalsUpdatedAt(new Date());
+      }
+    } catch (err) {
+      console.error('Failed to load live signals, keeping current data:', err);
+    } finally {
+      setSignalsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSignals();
+    const interval = setInterval(() => loadSignals(), AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [loadSignals]);
 
   const handleSelectOpportunity = (opt: Opportunity) => {
     setSelectedOpportunity(opt);
@@ -75,7 +102,14 @@ export default function Home() {
               onAddNewOpportunity={handleAddNewOpportunity}
             />
           )}
-          {currentTab === 'TRENDS' && <SignalExplorerTab signals={signals} />}
+          {currentTab === 'TRENDS' && (
+            <SignalExplorerTab
+              signals={signals}
+              isLoading={signalsLoading}
+              lastUpdated={signalsUpdatedAt ? timeAgo(signalsUpdatedAt) : null}
+              onRefresh={() => loadSignals(true)}
+            />
+          )}
           {currentTab === 'STARTUP BUILDER' && <StartupArchitectTab selectedOpportunity={selectedOpportunity} onGoToPitch={() => {setCurrentTab('PITCH DECK'); setIsSidebarOpen(false);}} />}
           {currentTab === 'PITCH DECK' && <PitchEngineTab selectedOpportunity={selectedOpportunity} />}
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Opportunity } from '@/lib/data';
 import { ArrowRight, Star, TrendingUp, Compass, Target, Hammer, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,12 @@ export function OpportunityFeedTab({
     setIsDiscoveryOpen(false);
     onAddNewOpportunity(opt);
   };
+
+  // Rank ideas highest score first, regardless of scan/insertion order.
+  const rankedOpportunities = useMemo(
+    () => [...opportunities].sort((a, b) => (b.opportunityScore ?? 0) - (a.opportunityScore ?? 0)),
+    [opportunities]
+  );
 
   return (
     <div className="max-w-5xl mx-auto pb-24">
@@ -45,7 +51,7 @@ export function OpportunityFeedTab({
       />
 
       <div className="space-y-8">
-        {opportunities.map((opt, index) => (
+        {rankedOpportunities.map((opt, index) => (
           <div key={opt.id} className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden hover:shadow-xl transition-all duration-300">
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-8 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-6 border-b border-indigo-100">
               <div className="max-w-2xl">
@@ -61,6 +67,19 @@ export function OpportunityFeedTab({
                   )}>
                     {opt.competitionLevel} Competition
                   </span>
+                  {opt.sourced === 'live' && (
+                    <span className="text-sm font-bold px-4 py-1.5 rounded-full shadow-sm bg-indigo-600 text-white flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" /> Live AI Scan
+                    </span>
+                  )}
+                  {opt.sourced === 'cached' && (
+                    <span
+                      className="text-sm font-bold px-4 py-1.5 rounded-full shadow-sm bg-slate-200 text-slate-600"
+                      title="The live AI scan was unavailable, so this example was shown instead of a fresh result."
+                    >
+                      Example (offline)
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-3xl font-bold text-slate-800 mb-4 leading-tight">{opt.title}</h3>
                 <p className="text-slate-600 leading-relaxed text-lg">{opt.problem}</p>
