@@ -1,23 +1,30 @@
 import { useMemo, useState } from 'react';
 import { Opportunity } from '@/lib/data';
-import { ArrowRight, Star, TrendingUp, Compass, Target, Hammer, Search } from 'lucide-react';
+import { ArrowRight, Star, TrendingUp, Compass, Target, Hammer, Search, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DiscoveryModal } from '@/components/DiscoveryModal';
 
-export function OpportunityFeedTab({ 
+export function OpportunityFeedTab({
   opportunities,
   onSelectOpportunity,
-  onAddNewOpportunity 
-}: { 
-  opportunities: Opportunity[], 
+  onAddNewOpportunity
+}: {
+  opportunities: Opportunity[],
   onSelectOpportunity: (opt: Opportunity) => void,
-  onAddNewOpportunity: (opt: Opportunity) => void 
+  onAddNewOpportunity: (opts: Opportunity[]) => void
 }) {
   const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
+  // The feed below is ranked by overall quality score, which has nothing to
+  // do with keyword relevance — a great "healthcare" match can still have a
+  // lower raw score than an unrelated pre-loaded idea and get buried at the
+  // bottom of a long list. So a scan's own results are also pinned here,
+  // separately, in the order the scan ranked them, until the next scan (or
+  // dismissal) replaces them.
+  const [scanResults, setScanResults] = useState<{ topic: string; items: Opportunity[] } | null>(null);
 
-  const handleDiscoveryComplete = (opt: Opportunity) => {
-    setIsDiscoveryOpen(false);
-    onAddNewOpportunity(opt);
+  const handleDiscoveryComplete = (opts: Opportunity[], topic: string) => {
+    onAddNewOpportunity(opts);
+    setScanResults({ topic, items: opts });
   };
 
   // Rank ideas highest score first, regardless of scan/insertion order.
@@ -44,11 +51,62 @@ export function OpportunityFeedTab({
         </button>
       </header>
 
-      <DiscoveryModal 
-        isOpen={isDiscoveryOpen} 
-        onClose={() => setIsDiscoveryOpen(false)} 
+      <DiscoveryModal
+        isOpen={isDiscoveryOpen}
+        onClose={() => setIsDiscoveryOpen(false)}
         onComplete={handleDiscoveryComplete}
       />
+
+      {scanResults && (
+        <div className="mb-10 bg-indigo-50/60 border border-indigo-100 rounded-3xl p-6 sm:p-8">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              {scanResults.topic ? `Search results for "${scanResults.topic}"` : 'Latest scan results'}
+            </h3>
+            <button
+              onClick={() => setScanResults(null)}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-full transition-colors shrink-0"
+              aria-label="Dismiss search results"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {scanResults.items.map((opt, i) => (
+              <div
+                key={opt.id}
+                onClick={() => onSelectOpportunity(opt)}
+                className="flex items-start gap-4 bg-white rounded-2xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+              >
+                <div className="bg-indigo-50 rounded-full w-9 h-9 flex items-center justify-center shrink-0 text-indigo-600 font-bold">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                    <h4 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{opt.title}</h4>
+                    {opt.sourced === 'cached' && (
+                      <span
+                        className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600"
+                        title="The live AI scan was unavailable, so this example was shown instead of a fresh result."
+                      >
+                        Example (offline)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-500 leading-relaxed line-clamp-2">{opt.problem}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-600 to-purple-600">
+                    {opt.opportunityScore}
+                  </div>
+                  <div className="text-xs text-slate-400 font-medium">match</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-8">
         {rankedOpportunities.map((opt, index) => (

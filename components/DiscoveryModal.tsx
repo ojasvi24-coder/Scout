@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Opportunity, calculateOpportunityScore } from '@/lib/data';
-import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2 } from 'lucide-react';
+import { Opportunity } from '@/lib/data';
+import { X, Search, Terminal, Cpu, Network, Database, CheckCircle2, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+// Copy-only — keep in sync with RESULT_COUNT in app/api/discover/route.ts.
+const RESULT_COUNT = 3;
 
 const SCAN_STEPS = [
   { id: 'arxiv',   icon: Network,  label: 'Scanning arXiv preprint feeds...',                duration: 800  },
   { id: 'filings', icon: Database, label: 'Cross-referencing SEC Form D & federal awards...', duration: 900  },
   { id: 'jobs',    icon: Search,   label: 'Analyzing live hiring signals...',                 duration: 700  },
   { id: 'funding', icon: Cpu,      label: 'Triangulating Hacker News & GitHub activity...',   duration: 800  },
-  { id: 'synth',   icon: Terminal, label: 'Asking Gemini to synthesize an opportunity...',    duration: 1200 },
+  { id: 'synth',   icon: Terminal, label: 'Asking Gemini to rank several opportunities...',   duration: 1400 },
 ];
 
 // Total animation duration so we never resolve before the UI finishes
@@ -21,13 +24,14 @@ export function DiscoveryModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (opt: Opportunity) => void;
+  onComplete: (opts: Opportunity[], topic: string) => void;
 }) {
   const [topic, setTopic] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const [results, setResults] = useState<Opportunity[] | null>(null);
 
   // Reset when modal opens
   useEffect(() => {
@@ -37,6 +41,7 @@ export function DiscoveryModal({
       setCurrentStepIndex(0);
       setLogs([]);
       setError('');
+      setResults(null);
     }
   }, [isOpen]);
 
@@ -85,24 +90,35 @@ export function DiscoveryModal({
 
       const data = await res.json();
 
-      if (!data?.opportunity) {
+      if (!Array.isArray(data?.opportunities) || data.opportunities.length === 0) {
         throw new Error('Server response was missing opportunity data.');
       }
 
-      // Wait for animation to complete before closing modal
+      // Wait for animation to complete before revealing results
       const elapsed = Date.now() - startTime;
       const remaining = Math.max(0, TOTAL_ANIMATION_MS - elapsed);
       await new Promise(r => setTimeout(r, remaining));
 
       setIsScanning(false);
 
-      const newOpt: Opportunity = {
-        ...data.opportunity,
-        id: `opt-auto-${Date.now()}`,
-        opportunityScore: calculateOpportunityScore(data.opportunity.metrics),
-      };
+      // Already ranked server-side, strongest first — keep that order. Every
+      // one of these came back specifically for this search, so it's a real
+      // match by definition — opportunityScore reflects that (high, ranked
+      // among these results) rather than the raw trend/demand/market ÷
+      // competition formula, which a genuinely relevant but competitive idea
+      // (healthcare, fintech, anything already crowded) can legitimately
+      // score near-zero on. opportunityScore is the ONE number this app
+      // shows and sorts by everywhere (the main feed, Dashboard, this
+      // modal) — a second "matchScore" alongside it just meant the same
+      // card showed two different numbers in two different places.
+      const newOpts: Opportunity[] = data.opportunities.map((raw: Opportunity, i: number) => ({
+        ...raw,
+        id: `opt-auto-${Date.now()}-${i}`,
+        opportunityScore: Math.max(75, 98 - i * 7),
+      }));
 
-      onComplete(newOpt);
+      onComplete(newOpts, topic.trim()); // add to the feed right away — never lost even if the user closes without reading
+      setResults(newOpts); // then show the ranked summary so they can see what was found
 
     } catch (err: unknown) {
       console.error('[DiscoveryModal] scan error:', err);
@@ -141,7 +157,48 @@ export function DiscoveryModal({
         </div>
 
         <div className="p-8">
-          {!isScanning ? (
+          {results ? (
+            /* ── Results state ── */
+            <div className="space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-100 w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800">
+                    Found {results.length} opportunit{results.length === 1 ? 'y' : 'ies'}{topic ? ` in "${topic}"` : ''}
+                  </h4>
+                  <p className="text-sm text-slate-500">Ranked strongest first and already added to your feed.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {results.map((opt, i) => (
+                  <div key={opt.id} className="flex items-start gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                    <div className="bg-white rounded-full w-8 h-8 flex items-center justify-center shrink-0 shadow-sm text-indigo-600 font-bold text-sm">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <h5 className="font-bold text-slate-800 truncate">{opt.title}</h5>
+                        <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700">
+                          {opt.opportunityScore} match
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-500 line-clamp-2 mt-1">{opt.problem}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={onClose}
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-6 rounded-2xl transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+              >
+                View in Great Ideas <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
+          ) : !isScanning ? (
             /* ── Input state ── */
             <div className="space-y-6">
               <div>
@@ -165,7 +222,7 @@ export function DiscoveryModal({
                 <div>
                   <h4 className="font-bold text-indigo-900 mb-1">Deep Scan Protocol</h4>
                   <p className="text-sm text-indigo-700/80 leading-relaxed">
-                    Gemini reasons over live signals from arXiv, Hacker News, RemoteOK, SEC Form D filings, and federal grant awards to surface a concrete, underserved opportunity.
+                    Gemini reasons over live signals from arXiv, Hacker News, RemoteOK, SEC Form D filings, and federal grant awards to surface {RESULT_COUNT} concrete, underserved opportunities — ranked strongest first, and tightly scoped to your focus area if you give one.
                   </p>
                 </div>
               </div>

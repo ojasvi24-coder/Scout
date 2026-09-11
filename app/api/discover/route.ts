@@ -2,14 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { getLiveSignals } from '@/lib/signals';
+import { calculateOpportunityScore, Signal } from '@/lib/data';
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 
-// Flash is fast and sits comfortably in the free tier's rate limits — this
-// route has no paid API key behind it, so avoid pro/preview models here.
+// Flash is fast and cheap on tokens — this route has no paid API key behind
+// it, so avoid pro/preview models here. Note the free tier's real bottleneck
+// isn't per-minute rate limits, it's a hard 20 REQUESTS-PER-DAY cap per
+// model — since each opportunity below costs one request, keep RESULT_COUNT
+// and the oversample margin conservative so a handful of scans a day doesn't
+// exhaust it (once exhausted, every scan gracefully falls back to the cached
+// examples until the quota resets — see the catch block below).
 const MODEL = 'gemini-2.5-flash';
 
-// ── Structured output schema — Claude's response is validated against this ──
+// How many distinct opportunities a single scan surfaces. Higher = more ideas
+// per scan, but also more of the 20/day free-tier request quota per scan.
+const RESULT_COUNT = 3;
+
+// ── Structured output schema — the model's response is validated against this ──
 const OpportunitySchema = z.object({
   title: z.string().describe('Short, compelling opportunity title (under 60 characters)'),
   problem: z.string().describe('2-3 sentences describing the specific problem and why it is painful today'),
@@ -121,9 +131,34 @@ const SEED_OPPORTUNITIES: SeedOpportunity[] = [
     metrics: { trendGrowth: 90, demandGrowth: 85, marketScore: 92, competitionScore: 8 },
     marketDetails: { tam: '$4B', sam: '$1B', som: '$150M', description: 'Privacy software for spatial computing' },
   },
+  {
+    title: 'Future-Proof Security for Legacy Hospital Systems',
+    problem: 'Hospitals run medical record and imaging systems that are decades old and cannot be easily upgraded to modern security standards, leaving patient data exposed to next-generation cyberattacks.',
+    suggestedStartup: 'A drop-in network appliance that sits beside legacy hospital systems and encrypts every connection leaving the building, without touching the underlying software.',
+    evidence: ['New healthcare data encryption standards were finalized this year', 'Job postings for healthcare security engineers are up sharply', 'Hospitals are being fined record amounts for patient data breaches'],
+    mvp: ['Drop-in network appliance for legacy systems', 'Connection manager for old EHR software', 'Compliance audit log for regulators'],
+    potentialCustomers: ['Regional hospital networks', 'Medical device manufacturers', 'Long-term care facilities'],
+    competitionLevel: 'Low',
+    competitors: [{ name: 'Cloud security platforms (AWS/Azure security)', description: 'Broad cloud-focused security tooling', moat: 'Massive platform reach', weaknesses: ['Cannot secure old on-premise systems physically inside the hospital'] }],
+    metrics: { trendGrowth: 99, demandGrowth: 82, marketScore: 78, competitionScore: 8 },
+    marketDetails: { tam: '$7.8B', sam: '$2.1B', som: '$300M', description: 'Cybersecurity modernization for healthcare' },
+  },
+  {
+    title: 'Embedded Compliance for Vertical Fintech Apps',
+    problem: 'Niche fintech startups building on banking-as-a-service platforms still have to manually stitch together KYC, AML, and state money-transmitter licensing, burning months of engineering time before they can launch.',
+    suggestedStartup: 'A compliance-as-code layer that plugs into BaaS providers and auto-generates the KYC/AML workflows and licensing paperwork a vertical fintech needs.',
+    evidence: ['State-level money transmitter rules are multiplying', 'Recent BaaS platform outages exposed gaps in who owns compliance', 'Fintech compliance job postings are up sharply'],
+    mvp: ['KYC/AML workflow builder', 'State licensing tracker', 'Audit-ready compliance dashboard'],
+    potentialCustomers: ['Vertical fintech startups', 'Embedded finance teams at non-finance companies', 'BaaS platform customers'],
+    competitionLevel: 'Medium',
+    competitors: [{ name: 'Alloy / Unit', description: 'Identity and banking infrastructure platforms', moat: 'Existing BaaS integrations', weaknesses: ['Compliance is a bolt-on feature, not the core product'] }],
+    metrics: { trendGrowth: 88, demandGrowth: 86, marketScore: 84, competitionScore: 22 },
+    marketDetails: { tam: '$9B', sam: '$2.5B', som: '$350M', description: 'Compliance infrastructure for embedded finance' },
+  },
 ];
 
-function pickSeed(topic: string): SeedOpportunity {
+/** Ranks seeds by relevance to `topic` (word overlap against title/problem/description) and returns the top `count`, falling back to a shuffled sample when nothing matches or no topic was given. */
+function pickSeeds(topic: string, count: number): SeedOpportunity[] {
   const clean = topic.trim().toLowerCase();
   if (clean) {
     const scored = SEED_OPPORTUNITIES.map((s) => {
@@ -131,10 +166,11 @@ function pickSeed(topic: string): SeedOpportunity {
       const score = clean.split(/\s+/).filter((w) => w.length > 2 && haystack.includes(w)).length;
       return { s, score };
     });
-    scored.sort((a, b) => b.score - a.score);
-    if (scored[0].score > 0) return scored[0].s;
+    const relevant = scored.filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
+    if (relevant.length > 0) return relevant.slice(0, count).map((x) => x.s);
   }
-  return SEED_OPPORTUNITIES[Math.floor(Math.random() * SEED_OPPORTUNITIES.length)];
+  // No topic, or nothing matched it — a random distinct sample still beats one repeated idea.
+  return [...SEED_OPPORTUNITIES].sort(() => Math.random() - 0.5).slice(0, count);
 }
 
 const SYSTEM_PROMPT = `You are an expert startup opportunity analyst working for Scout, a tool that helps entrepreneurs find real, underserved market gaps before they become obvious.
@@ -143,33 +179,34 @@ You will be given a topic (optional) and a list of real, current signals pulled 
 
 Identify ONE specific, high-value, underserved market gap. Be concrete: name the exact problem, the exact buyer, and why it is painful right now. Avoid generic, overused startup ideas.`;
 
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const topic: string = (body?.topic ?? '').toString().slice(0, 200);
+// A single scan fires RESULT_COUNT of these calls in parallel (see POST below)
+// rather than asking the model for an array of opportunities in one call —
+// Gemini's structured-output engine rejects that shape with a 400 ("too many
+// states for serving") once OpportunitySchema's own nested min/max arrays get
+// wrapped in an outer array. N parallel single-object calls sidestep that
+// entirely and reuse the exact schema shape that's known to validate cleanly.
+// Each call gets a different "angle" nudge so the batch comes back varied
+// instead of N near-duplicates of the same idea.
+const ANGLE_HINTS = [
+  'Focus on an enterprise or B2B buyer.',
+  'Focus on a completely different customer segment — consumer, prosumer, or a niche SMB vertical.',
+  'Focus on a regulatory, compliance, or legal-risk angle.',
+  'Focus on an infrastructure, hardware, or operational-efficiency angle.',
+  'Focus on a workflow or productivity angle for a specific job role.',
+  'Focus on a data, security, or trust angle.',
+];
 
-  // Best-effort grounding context — never let a signals outage block discovery.
-  let signalsBlock = '';
-  try {
-    const { signals } = await getLiveSignals({ perSourceLimit: 4 });
-    if (signals.length > 0) {
-      const sample = signals.slice(0, 10);
-      signalsBlock = `\n\nHere are real signals pulled live just now:\n${sample
-        .map((s) => `- [${s.source} via ${s.origin ?? 'unknown'}] ${s.content}`)
-        .join('\n')}`;
-    }
-  } catch (err) {
-    console.error('[discover] Failed to fetch grounding signals (continuing without them):', err);
-  }
-
+async function generateOne(
+  ai: GoogleGenAI,
+  topic: string,
+  signalsBlock: string,
+  angleHint: string
+): Promise<SeedOpportunity | null> {
   const userMessage = topic
-    ? `Find a specific underserved startup opportunity in: ${topic}. Be concrete about the exact problem.${signalsBlock}`
-    : `Find a specific underserved startup opportunity in any emerging technology or market. Be creative and very specific.${signalsBlock}`;
+    ? `Find a specific underserved startup opportunity in: ${topic}. It must genuinely fit that focus area — do not drift into unrelated markets. ${angleHint} Be concrete about the exact problem.${signalsBlock}`
+    : `Find a specific underserved startup opportunity in any emerging technology or market. ${angleHint} Be creative and very specific.${signalsBlock}`;
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
-
-    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: MODEL,
       contents: userMessage,
@@ -188,19 +225,108 @@ export async function POST(req: NextRequest) {
       throw new Error(`Model blocked the request: ${response.promptFeedback.blockReason}`);
     }
     const text = response.text;
-    if (!text) {
-      throw new Error('Empty response from Gemini');
-    }
+    if (!text) throw new Error('Empty response from Gemini');
 
     const parsed = OpportunitySchema.safeParse(JSON.parse(text));
     if (!parsed.success) {
       throw new Error(`Model response did not match the expected schema: ${parsed.error.message}`);
     }
-
-    return NextResponse.json({ opportunity: { ...parsed.data, sourced: 'live' } });
+    return parsed.data;
   } catch (err) {
-    console.error('[discover] Live generation failed, falling back to a cached example:', err);
-    const seed = pickSeed(topic);
-    return NextResponse.json({ opportunity: { ...seed, sourced: 'cached' } });
+    console.error('[discover] One parallel generation failed (continuing with the rest):', err);
+    return null;
+  }
+}
+
+const STOPWORDS = new Set(['a', 'an', 'the', 'for', 'and', 'or', 'of', 'to', 'in', 'on', 'with', 'ai', 'startup']);
+
+/** Significant words from a title+problem, for a crude but effective similarity check. */
+function keywordSet(o: SeedOpportunity): Set<string> {
+  return new Set(
+    `${o.title} ${o.problem}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+  );
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  let intersection = 0;
+  for (const w of a) if (b.has(w)) intersection++;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Parallel calls occasionally converge on the same underlying idea from
+ * different angles (e.g. "EV Charging Cybersecurity" vs "EV Charging
+ * Compliance Platform") — an exact-title check alone won't catch that.
+ * Drops opportunities whose title+problem overlap heavily with one already
+ * kept, keeping the first (highest-ranked) occurrence of each idea.
+ */
+function dedupeSimilar(opts: SeedOpportunity[], threshold = 0.35): SeedOpportunity[] {
+  const kept: { opt: SeedOpportunity; words: Set<string> }[] = [];
+  for (const opt of opts) {
+    const words = keywordSet(opt);
+    const isDuplicate = kept.some((k) => jaccardSimilarity(k.words, words) >= threshold);
+    if (!isDuplicate) kept.push({ opt, words });
+  }
+  return kept.map((k) => k.opt);
+}
+
+function rankByScore(opts: SeedOpportunity[]): SeedOpportunity[] {
+  return [...opts].sort((a, b) => calculateOpportunityScore(b.metrics) - calculateOpportunityScore(a.metrics));
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  const topic: string = (body?.topic ?? '').toString().slice(0, 200);
+
+  // Best-effort grounding context — never let a signals outage block discovery.
+  let liveSignals: Signal[] = [];
+  try {
+    const { signals } = await getLiveSignals({ perSourceLimit: 4 });
+    liveSignals = signals;
+  } catch (err) {
+    console.error('[discover] Failed to fetch grounding signals (continuing without them):', err);
+  }
+
+  // Every parallel call gets its own shuffled slice of the live signals rather
+  // than one shared sample — otherwise all N calls latch onto the same single
+  // most-salient signal and the batch comes back as near-duplicates.
+  function signalsBlockFor(): string {
+    if (liveSignals.length === 0) return '';
+    const sample = [...liveSignals].sort(() => Math.random() - 0.5).slice(0, 10);
+    return `\n\nHere are real signals pulled live just now:\n${sample
+      .map((s) => `- [${s.source} via ${s.origin ?? 'unknown'}] ${s.content}`)
+      .join('\n')}`;
+  }
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
+
+    const ai = new GoogleGenAI({ apiKey });
+    // One extra call beyond RESULT_COUNT — parallel generations sometimes
+    // converge on the same idea from different angles, so this gives
+    // dedupeSimilar() a little room to filter that out and still land near
+    // RESULT_COUNT, without spending more of the 20/day quota than needed.
+    const callCount = Math.min(RESULT_COUNT + 1, ANGLE_HINTS.length);
+    const shuffledHints = [...ANGLE_HINTS].sort(() => Math.random() - 0.5);
+    const results = await Promise.all(
+      Array.from({ length: callCount }, (_, i) => generateOne(ai, topic, signalsBlockFor(), shuffledHints[i]))
+    );
+
+    const opportunities = dedupeSimilar(results.filter((o): o is SeedOpportunity => o !== null));
+    if (opportunities.length === 0) {
+      throw new Error('Every live generation failed or was filtered out as a duplicate');
+    }
+
+    const ranked = rankByScore(opportunities).slice(0, RESULT_COUNT);
+    return NextResponse.json({ opportunities: ranked.map((o) => ({ ...o, sourced: 'live' as const })) });
+  } catch (err) {
+    console.error('[discover] Live generation failed, falling back to cached examples:', err);
+    const seeds = pickSeeds(topic, RESULT_COUNT);
+    return NextResponse.json({ opportunities: rankByScore(seeds).map((s) => ({ ...s, sourced: 'cached' as const })) });
   }
 }

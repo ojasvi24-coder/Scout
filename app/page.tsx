@@ -53,8 +53,8 @@ export default function Home() {
     setIsSidebarOpen(false); // Close sidebar on mobile after selecting
   };
 
-  const handleAddNewOpportunity = (opt: Opportunity) => {
-    setOpportunities(prev => [opt, ...prev]);
+  const handleAddNewOpportunity = (opts: Opportunity[]) => {
+    setOpportunities(prev => [...opts, ...prev]);
   };
 
   return (
